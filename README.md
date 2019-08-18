@@ -7,3 +7,4 @@ No GPU (cuda support) needed, can be runed entirely with CPU.
 MAIN REQUIRMENTS<br>
 PyTorch 0.4.1 <br>
 Python 3.7 <br>
+ 

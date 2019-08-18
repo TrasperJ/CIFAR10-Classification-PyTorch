@@ -1,0 +1,215 @@
+import torch
+import torchvision
+import torchvision.transforms as transforms
+import time
+
+batchsize = 16
+epochs = 10
+
+# --------------------------------- CHECK GPU AVALIABILITY ----------------------------------------- #
+if torch.cuda.is_available():
+	print(f'Found {torch.cuda.device_count()} GPUs available.')
+	GPU_mode = True
+
+print('Working with CPU.')
+'''	
+# ------------------------------------------------------------------------------------------------- #
+
+# ^^^^^^^^^^^^^ MANULLY set GPU & CPU mode 
+GPU_mode = False
+
+if GPU_mode:
+	print('-------------- GPU MODE --------------#')
+else:
+	print('-------------- CPU MODE --------------#')
+# ------------------------------------------------------------------------------------------------- #
+'''
+
+# --------------------------------- DATA PREPARATION (Extract-Transform-Load) ---------------------- #
+# transform is a torchvision.transforms object
+transform = transforms.Compose(
+	[transforms.ToTensor(),
+	transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+	)
+
+st_time = time.time()
+# download the CIFAR10 by torchvision, trainset is a torchvision.datasets object
+# transform is performed while obtaining the dataset
+# the ./data directory is automatically created, and once dowloaded, this code can sense it and will not
+# download it agin
+print('------------ DATASET EXTRACTION ------------')
+trainset = torchvision.datasets.CIFAR10(root = './data', train = True, download = True, transform = transform)
+# load the datasets object with a torch.utils.data.DataLoader function, which returns a loaded dataset object 
+trainloader = torch.utils.data.DataLoader(trainset, batch_size = batchsize, shuffle = True, num_workers = 2)
+
+testset = torchvision.datasets.CIFAR10(root = './data', train = False, download = True, transform = transform)
+
+testloader = torch.utils.data.DataLoader(testset, batch_size = batchsize, shuffle = False, num_workers = 2)
+
+end_time = time.time()
+
+classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+
+#print(f'Data extraction & augmetnation takes GPU {round(end_time - st_time, 2)} seconds.')
+# ------------------------------------------------------------------------------------------------- #
+'''
+# -------------------------------- image processing & dispalying utils ---------------------------- #
+import matplotlib.pyplot as plt 
+import numpy as np 
+
+
+def imshow(img):
+	# normalizing
+	img = img / 2 + 0.5 # imgs are already noramlized during Transforming in data prepration
+	npimg = img.numpy()
+	plt.imshow(np.transpose(npimg, (1, 2, 0)))
+
+
+# get some random training imgs
+# A dataloader is a generator to continue going over the entire set batch-by-batch
+# To pick just one batch, call iter(dataloader) to return just one batch
+dataiter = iter(trainloader)  # calling the iter() function on a torch.utils.data.DataLoader object
+images, labels = dataiter.next() # the returned object from iter() has a method .next() to return a sample
+
+imshow(torchvision.utils.make_grid(images))
+# print label
+print(' '.join('%5s' % classes[labels[j]] for j in range(batchsize)))
+
+# ------------------------------------------------------------------------------------------------- #
+'''
+# ------------------------------ DEFINE THE CNN ARCHITECTURE -------------------------------------- #
+import torch.nn as nn
+import torch.nn.functional as F
+
+#print('------------ NETWORK DEFINTION ------------')
+class Net(nn.Module):
+	def __init__(self):
+		super(Net, self).__init__()
+		self.conv1 = nn.Conv2d(3, 6, 5)
+		self.pool = nn.MaxPool2d(2, 2)
+		self.conv2 = nn.Conv2d(6, 16, 5)
+		self.fc1 = nn.Linear(16 * 5 * 5, 120)
+		self.fc2 = nn.Linear(120, 84)
+		self.fc3 = nn.Linear(84, 10)
+
+	def forward(self, x):
+		x = self.pool(F.relu(self.conv1(x)))
+		x = self.pool(F.relu(self.conv2(x)))
+		x = x.view(-1, 16 * 5 * 5)
+		x = F.relu(self.fc1(x))
+		x = F.relu(self.fc2(x))
+		x = self.fc3(x)
+
+		return x
+
+net = Net()
+# ------------------------------------------------------------------------------------------------- #
+
+# ------------------------- DEFINE LOSS FUNC & OPTIMIZER ------------------------------------------- #
+import torch.optim as optim
+
+# loss func "criterion" is a torch.nn.CrossEntropyLoss object
+criterion = nn.CrossEntropyLoss()
+# optimizer is a torch.optim.SGD object
+optimizer = optim.SGD(net.parameters(), lr = 0.001, momentum = 0.9)
+# ------------------------------------------------------------------------------------------------- #
+
+# ----------------------------------- TRAINING ---------------------------------------------------- #
+print('------------ TRAINING BEGINS ------------')
+
+for epoch in range(epochs): # %%%%%%%%%%%%%% Outer loop to go over epochs
+	train_start_time = time.time()
+	running_loss = 0.0  # for computing a avg loss over itrs
+	for i, data in enumerate(trainloader, 0): # %%%%%%%%%%%% inner loop over samples generated by dataloader
+		# get the inputs
+		inputs, labels = data
+
+		# zero the params gradients for every new samples coming in
+		optimizer.zero_grad()
+
+		# Forward
+		outputs = net.forward(inputs)
+		
+		# Loss computation
+		loss = criterion(outputs, labels)
+
+		# BP, i.e. computes the gradients along the way, all tensor with .requries_grad() = True 
+		# will store its gradient in the .grad attribute
+		loss.backward()
+
+		# Optimize
+		optimizer.step()
+
+		# print statistics
+		running_loss += loss.item()  #tensor.item() convert scalar stored in a tensor to a number
+		'''
+		if i % 2000 == 1999:  # print every 2000 mini-batches
+			print(f'Epoch {epoch + 1} Itrs {i + 1} LOSS {running_loss / 2000}')
+			running_loss = 0.0
+		'''
+	train_stop_time = time.time()
+	elapsed_time_perEpoch = round(train_stop_time - train_start_time, 2)
+	print(f'*-*-*-*- Epoch {epoch + 1} avg_loss is: {round(running_loss / i, 2)}, time spent: {elapsed_time_perEpoch} sec.')
+
+# ------------------------------------------------------------------------------------------------- #
+'''
+# ------------------------------ TESTING with just a batch of data -------------------------------- #
+# ------------- Demo what a GT looks like
+dataiter = iter(testloader)
+images, labels = dataiter.next()
+
+# show images
+imshow(torchvision.utils.make_grid(images))
+print('GT classes for a batch of 4:' + ' '.join('%5s' % classes[labels[j]] for j in range(batchsize)))
+
+
+# predicted
+outputs = net(images)
+
+# pick out the hihgest prob out of the 10 classes as the predicetd class
+_, predicted = torch.max(outputs, dim = 1)
+
+print('Predicted classes for a batch of 4:' + ' '.join('%5s' % classes[labels[j]] for j in range(batchsize)))
+# ------------------------------------------------------------------------------------------------- #
+'''
+# -------------------------- TESTING & ACC COMPUTE for the whole test set ------------------------- #
+print('------------ TESTING BEGINS ------------')
+start_time = time.time()
+correct = 0
+total = 0
+with torch.no_grad():
+	for data in testloader:
+		images, labels = data
+		outputs = net.forward(images)
+		_, predicted = torch.max(outputs.data, 1)
+		total += labels.size(0)
+		correct += (predicted == labels).sum().item()
+		
+finish_time = time.time()
+elapsed_time = round(finish_time - start_time, 2)
+
+print(f'Acc on 10K test image is: {100 * correct / total}, used time: {elapsed_time} seconds')
+# ------------------------------------------------------------------------------------------------- #
+
+# ------------------------- GET PER-CLASS TESTING RESULT ------------------------------------------ #
+class_correct = list(0. for i in range(10))
+class_total = list(0. for i in range(10))
+with torch.no_grad():
+	for data in testloader:
+		images, labels = data
+		outputs = net(images)
+		_, predicted = torch.max(outputs, dim = 1)
+		c = (predicted == labels).squeeze()
+		
+		if len(labels) >= batchsize: # in case the last batch left is smaller than batchsize
+			for i in range(batchsize):
+
+				label = labels[i]
+				class_correct[label] += c[i].item()
+				class_total[label] += 1
+		else:
+			pass
+
+for i in range(10):
+	print(f'ACC of {classes[i]}: {100 * class_correct[i] / class_total[i]}')
+# ------------------------------------------------------------------------------------------------- #
